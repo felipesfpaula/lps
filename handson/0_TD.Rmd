@@ -140,3 +140,18 @@ Geophysics parallel applications are generally organized in timesteps. At each t
 df <- read.csv("data/IterDuration.csv");
 head(df);
 ```
+
+# Descriptive Statistics of the Parallel Application
+
+
+```{r}
+summary(df$duration)
+```
+
+## Distribution Details of the Parallel Application
+
+```{r}
+hist.default(df$duration)
+boxplot(df$duration)
+```
+
