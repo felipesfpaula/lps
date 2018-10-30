@@ -141,6 +141,13 @@ df <- read.csv("data/IterDuration.csv");
 head(df);
 ```
 
+
+## Overview of duration variable
+
+```{r, fig.width=6, fig.height=3.5}
+plot(df1, ylab="Time (seconds)", xlab="Measurement Number");
+```
+
 # Descriptive Statistics of the Parallel Application
 
 
@@ -155,3 +162,4 @@ hist.default(df$duration)
 boxplot(df$duration)
 ```
 
+The boxplot can't represent the data very well since most values are around mean/median, so the boxplot shows lots of outliers.
