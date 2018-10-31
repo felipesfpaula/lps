@@ -3,8 +3,8 @@ title: "Analysis of a plot"
 author: "Felipe Paula"
 date: "10/31/2018"
 output:
-  html_document: default
   pdf_document: default
+  html_document: default
 ---
 
 # Critical plot analysis task
