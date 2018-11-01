@@ -1,0 +1,82 @@
+---
+title: "Porto Alegre Accidents"
+author: "Felipe Paula"
+date: "31 de outubro de 2018"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Accidents in the city of Porto Alegre, Rio Grande do Sul, Brazil
+
+In this document, we analyze the data regarding the accidents that occured in the city of POA (Porto Alegre). The data is provided by the city's center of open data #DataPOA. 
+
+```{r}
+file.name <- "acidentes-2016.csv"
+if(!file.exists(file.name)){
+  download.file("http://datapoa.com.br/storage/f/2017-08-03T13%3A19%3A45.538Z/acidentes-2016.csv",
+	destfile=file.name)
+}
+df <- read.csv2(file.name, stringsAsFactors = FALSE)
+
+```
+
+There's also a dictionary of the semantics of the data available in the website.
+
+```{r}
+file.name <- "dicionariodedadosacidentes.pdf"
+if(!file.exists(file.name)){
+  download.file("http://datapoa.com.br/storage/f/2017-05-19T19%3A49%3A51.583Z/dicionariodedadosacidentes.pdf",
+	destfile=file.name)
+}
+```
+
+## Is there a time of the year with more accidents?
+
+For answer this question we examine in different levels of granularity, days of week and months. For days of week:
+
+```{r}
+require(tidyverse)
+
+df %>%
+  group_by(DIA_SEM) %>%
+  summarise(n_accidents = n())
+  
+```
+
+It seems that the number of accidents in the weekend (SABADO and DOMINGO) is lower than during the week. One hypothesis is that there is few cars on the streets. _Fridays present higher absolute number of accidents_. Next analysis should include discrimination by the type of accident.
+
+For months:
+
+```{r}
+df %>%
+  group_by(MES) %>%
+  summarise(n_accidents = n()) %>%
+  ggplot(aes(x=MES, y=n_accidents, group=1)) +
+  geom_bar(stat="identity")
+```
+
+
+February present less accidents, however it have fewer days. _We should normalize by the number of days_.
+
+## How many vehicles are usually involved?
+
+```{r}
+df %>%
+  group_by(TIPO_ACID) %>%
+  summarise(auto = sum(AUTO), 
+            taxi = sum(TAXI), 
+            lotacao = sum(LOTACAO), 
+            oni_urbanos = sum(ONIBUS_URB), 
+            oni_interior = sum(ONIBUS_INT),
+            caminhao = sum(CAMINHAO),
+            moto = sum(MOTO),
+            carroca = sum(CARROCA),
+            bicicleta = sum(BICICLETA),
+            outro = sum(OUTRO))
+```
+
+
+
