@@ -1,0 +1,212 @@
+---
+title: "Accidents in the city of Porto Alegre"
+author: "Felipe Paula"
+date: "11/8/2018"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+require(tidyverse)
+require(RColorBrewer)
+require(lubridate)
+```
+
+## Data
+
+In this document, we analyze the data regarding the accidents that occured in the city of POA (Porto Alegre). The data is provided by the city's center of open data #DataPOA. In our analisys, we focus in the year of 2016. There's also a dictionary of the semantics of the data available in the website.
+
+
+```{r,echo=FALSE}
+file.name <- "acidentes-2016.csv"
+if(!file.exists(file.name)){
+  download.file("http://datapoa.com.br/storage/f/2017-08-03T13%3A19%3A45.538Z/acidentes-2016.csv",
+	destfile=file.name)
+}
+
+df <- read.csv2(file.name, stringsAsFactors = FALSE)
+
+file.name <- "dicionariodedadosacidentes.pdf"
+if(!file.exists(file.name)){
+  download.file("http://datapoa.com.br/storage/f/2017-05-19T19%3A49%3A51.583Z/dicionariodedadosacidentes.pdf",
+	destfile=file.name)
+}
+
+```
+
+The data presents `r nrow(df)` rows and `r ncol(df)` columns. Including, information about date and time of the accident, vehicles involved, number of people injuried, location, and weather. Since 2016 is a leap year, the dataset spans 366 days, with accidents in everyday.
+
+##How many cars are involved in accidents?
+
+For each accident, the dataset indicates how many cars, taxis, buses, trucks, motobikes, bikes and others are involved. To answer the question, we plot the distribution of the sum of the vehicles involved. As expected, the majority of the accidents involve 2 cars. The accident which involved 0 vehicles was a run over with no vehicle registred.  
+<br/>
+
+```{r number.of.cars , echo=FALSE, fig.width = 6, fig.height = 4, align= "center"}
+df %>%
+  mutate(tv = AUTO + TAXI + LOTACAO + ONIBUS_URB + ONIBUS_INT + ONIBUS_MET + CAMINHAO + MOTO + CARROCA + BICICLETA + OUTRO)  -> total.vehicles
+
+total.vehicles$tv <- as.factor(total.vehicles$tv)
+
+total.vehicles %>%
+ggplot(aes(tv)) +
+ylab('Number of accidents\n') +
+xlab('\nNumber of vehicles involved') +
+ggtitle('Distribution of number of vehicles involved in accidents') + 
+geom_bar(stat = "count", colour="black", fill="gold2")+
+geom_text(stat='count',aes(label=..count..),vjust=-1)+
+ylim(0, 12000) + 
+theme_minimal() +
+  theme(
+        plot.title = element_text(size = 11, hjust = 0.5),
+        axis.text.x = element_text(size = 12),
+        axis.title=element_text(size = 15),
+        axis.text.y = element_text(size = 12))
+
+
+```
+
+
+##Is there a specific weekday with more accidents?
+
+To access if there is a day of a week which more accidents occur, we also plot the distribution of the number of accidents in each week day. An one way one factor anova test reveals differences between the means of the days. We also used Tukey's test to find significant pairwise differences. There was not a weekday with the mean greater than all others, so the answer of the question is no. Sunday present the smaller mean number of accidents ($p < 0.01$), followed by Saturday.
+
+
+```{r accidents.weekdays ,echo=FALSE, fig.width = 6, fig.height = 3.3, align= "center"}
+## Takes a day in portuguese and translates to english
+translate.week.days <- function(weekday){
+  
+  dictionary <- list("SEGUNDA-FEIRA" = 'Monday',
+                     "TERCA-FEIRA" = 'Tuesday',
+                     "QUARTA-FEIRA" = "Wednesday",
+                     "QUINTA-FEIRA"='Thursday',
+                     "SEXTA-FEIRA"='Friday',
+                     "SABADO" = 'Saturday',
+                     "DOMINGO"='Sunday')
+  return(unlist(dictionary[weekday]))
+}
+
+df %>%
+  group_by(DIA_SEM,DATA) %>%
+  summarise(n_accidents = n()) %>%
+  ungroup() %>%
+  mutate(DIA_SEM = translate.week.days(DIA_SEM)) -> accidents.per.week
+
+# accidents.per.week %>%
+#   mutate(DIA_SEMS = str_to_lower(DIA_SEM)) -> accidents.per.week
+
+accidents.per.week$DIA_SEM <- ordered(factor(accidents.per.week$DIA_SEM),
+                                      levels = c("Monday", "Tuesday", "Wednesday","Thursday", "Friday", "Saturday", "Sunday"))
+
+accidents.per.week %>%
+  ggplot(aes(x=DIA_SEM, y=n_accidents, fill = DIA_SEM)) +
+  stat_boxplot(geom = "errorbar", width = 0.5,size=0.8) +
+  geom_boxplot(width=0.5) +
+  scale_fill_brewer(palette="Oranges") + 
+  scale_y_continuous(limits = c(0, 70)) +
+  ylab('Number of accidents\n')+
+  ggtitle('Distribution of accidents per day') + 
+  theme_minimal() + 
+  theme(legend.position="none",
+        plot.title = element_text(size = 11, hjust = 0.5),
+        axis.text.x = element_text(angle = 25, hjust = .5,size = 12),
+        axis.title.x=element_blank(),
+        axis.title.y=element_text(size = 15),
+        axis.text.y = element_text(size = 12))
+```
+
+
+```{r,include=FALSE}
+## ANOVA
+accidents.per.week$DIA_SEM <- factor(accidents.per.week$DIA_SEM)
+
+accidents.per.week.anova <- aov(n_accidents ~ DIA_SEM,data=accidents.per.week)
+# summary(accidents.per.week.anova)
+
+TukeyHSD(accidents.per.week.anova)
+```
+
+
+##Is there a time of the year with more accidents?
+
+Since during the weekend there are less accidents, we aggregate the data by weeks. The figure below shows the number of accidents evolution through the weeks of the year. Also, we mark interesting months in the plot, with their mean number of accidents over the days. The mean accident per week in 242 (sd = 31.5). One way anova did not show difference between the number of accidents among the months. So we can't say that there is a time of the year with more accidents.
+<br\>
+```{r, include=FALSE}
+df %>%
+  mutate(MES = as.factor(MES)) %>%
+  group_by(DATA,MES) %>%
+  summarise(n_accidents = n()) -> accidents.per.date
+
+summary(aov(n_accidents ~ MES, accidents.per.date))
+```
+
+
+```{r accidents.week, echo=FALSE, warning=FALSE,fig.width = 7, fig.height = 3.1, align = "center"}
+df %>%
+  mutate(DATA = as.Date(DATA)) %>%
+  mutate(WEEK = week(DATA)) -> df2
+
+df2 %>%
+  group_by(WEEK) %>%
+  summarise(n_accidents = n()) %>%
+  filter(WEEK != 1, WEEK != 53) -> week.accidents
+
+week.accidents %>%
+  summarise(mean_acc = mean(n_accidents),sd_acc = sd(n_accidents)) -> week.acc.stats
+
+week.accidents %>%
+  ggplot(aes(x=WEEK, y=n_accidents,group = 1)) +
+  annotate("rect", xmin = 1, xmax = 5, ymin = 0, ymax = 300,
+  alpha = 0, colour = 'black',linetype='dashed') + 
+  annotate("text", x = 3, y = 45, label = "JAN") + 
+  annotate("text", x = 3, y = 25, label = "1021") + 
+
+  annotate("rect", xmin = 10, xmax = 14, ymin = 0, ymax = 300,
+  alpha = 0, colour = 'black',linetype='dashed') +
+  annotate("text", x = 12, y = 45, label = "MAR") + 
+  annotate("text", x = 12, y = 25, label = "1172") + 
+
+  annotate("rect", xmin = 22, xmax = 26, ymin = 0, ymax = 300,
+  alpha = 0, colour = 'black',linetype='dashed') + 
+  annotate("text", x = 24, y = 45, label = "JUN") +
+  annotate("text", x = 24, y = 25, label = "1124") +
+
+  annotate("rect", xmin = 31, xmax = 35, ymin = 0, ymax = 300,
+  alpha = 0, colour = 'black',linetype='dashed') + 
+  annotate("text", x = 33, y = 45, label = "AGO") + 
+  annotate("text", x = 33, y = 25, label = "1098") + 
+
+  annotate("rect", xmin = 39, xmax = 44, ymin = 0, ymax = 300,
+  alpha = 0, colour = 'black',linetype='dashed') + 
+  annotate("text", x = 41.5, y = 45, label = "OCT") + 
+  annotate("text", x = 41.5, y = 25, label = "1041") + 
+
+  annotate("rect", xmin = 48, xmax = 52, ymin = 0, ymax = 300,
+  alpha = 0, colour = 'black',linetype='dashed') +
+  annotate("text", x = 50, y = 45, label = "DEC") +
+  annotate("text", x = 50, y = 25, label = "1035") +
+
+  annotate("segment", x = -Inf, xend = Inf, y = 242, yend = 242) +
+  annotate("rect", xmin = -Inf, xmax = Inf, ymin = 242 - 31.5, ymax = 242 + 31.5,
+  alpha = 0.2, colour = 'orange', fill='orange') +
+  annotate("text", x = 57, y = 242, label = "Mean \n 242 (31.5)") +
+  annotate("text", x = 60, y = 242, label = "") +
+  scale_x_continuous(breaks=seq(0,53,5)) + 
+  geom_line() +
+  ylab('Number of accidents \n') + 
+  xlab('Week') +
+  ggtitle('Number of accidents per week') + 
+  theme_minimal() + 
+  theme(legend.position="none",
+        plot.title = element_text(size = 11, hjust = 0.5),
+        axis.text.x = element_text(angle = 25, hjust = .5,size = 12),
+        axis.title =element_text(size = 15),
+        axis.text.y = element_text(size = 12))
+
+
+```
+
+
+
+

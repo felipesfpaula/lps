@@ -43,14 +43,24 @@ require(tidyverse)
 df %>%
   group_by(DIA_SEM) %>%
   summarise(n_accidents = n())
-  
 ```
 
 It seems that the number of accidents in the weekend (SABADO and DOMINGO) is lower than during the week. One hypothesis is that there is few cars on the streets. _Fridays present higher absolute number of accidents_. Next analysis should include discrimination by the type of accident.
 
+```{r}
+df %>%
+  group_by(DIA_SEM) %>%
+  summarise(n_accidents = n())
+```
+
+
 For months:
 
 ```{r}
+df %>%
+  group_by(MES) %>%
+  summarise(n_accidents = n())
+
 df %>%
   group_by(MES) %>%
   summarise(n_accidents = n()) %>%
@@ -60,6 +70,198 @@ df %>%
 
 
 February present less accidents, however it have fewer days. _We should normalize by the number of days_.
+
+For days:
+
+```{r}
+df %>%
+  group_by(TIPO_ACID,DATA) %>%
+  summarise(n_accidents = n())  %>%
+  ggplot(aes(x=DATA, y=n_accidents, color=TIPO_ACID,group = 1)) +
+  facet_grid(TIPO_ACID ~ .) + 
+  geom_line()
+```
+
+
+```{r}
+require(lubridate)
+df %>%
+  mutate(DATA = as.Date(DATA)) %>%
+  
+  mutate(WEEK = week(DATA)) -> df
+
+df %>%
+  group_by(WEEK) %>%
+  summarise(n_accidents = n()) %>%
+  filter(WEEK != 1, WEEK != 53) -> week.accidents
+
+week.accidents %>%
+  summarise(mean_acc = mean(n_accidents),sd_acc = sd(n_accidents)) -> week.acc.stats
+
+week.accidents %>%
+  ggplot(aes(x=WEEK, y=n_accidents,group = 1)) +
+  annotate("rect", xmin = 1, xmax = 5, ymin = 0, ymax = 300,
+  alpha = 0, colour = 'black',linetype='dashed') + 
+  annotate("text", x = 3, y = 45, label = "JAN") + 
+  annotate("text", x = 3, y = 25, label = "1021") + 
+
+  annotate("rect", xmin = 10, xmax = 14, ymin = 0, ymax = 300,
+  alpha = 0, colour = 'black',linetype='dashed') +
+  annotate("text", x = 12, y = 45, label = "MAR") + 
+  annotate("text", x = 12, y = 25, label = "1172") + 
+
+  annotate("rect", xmin = 22, xmax = 26, ymin = 0, ymax = 300,
+  alpha = 0, colour = 'black',linetype='dashed') + 
+  annotate("text", x = 24, y = 45, label = "JUN") +
+  annotate("text", x = 24, y = 25, label = "1124") +
+
+  annotate("rect", xmin = 31, xmax = 35, ymin = 0, ymax = 300,
+  alpha = 0, colour = 'black',linetype='dashed') + 
+  annotate("text", x = 33, y = 45, label = "AGO") + 
+  annotate("text", x = 33, y = 25, label = "1098") + 
+
+  annotate("rect", xmin = 39, xmax = 44, ymin = 0, ymax = 300,
+  alpha = 0, colour = 'black',linetype='dashed') + 
+  annotate("text", x = 41.5, y = 45, label = "OCT") + 
+  annotate("text", x = 41.5, y = 25, label = "1041") + 
+
+  annotate("rect", xmin = 48, xmax = 52, ymin = 0, ymax = 300,
+  alpha = 0, colour = 'black',linetype='dashed') +
+  annotate("text", x = 50, y = 45, label = "DEC") +
+  annotate("text", x = 50, y = 25, label = "1035") +
+
+  annotate("segment", x = -Inf, xend = Inf, y = 242, yend = 242) +
+  annotate("rect", xmin = -Inf, xmax = Inf, ymin = 242 - 31.5, ymax = 242 + 31.5,
+  alpha = 0.2, colour = 'orange', fill='orange') +
+  annotate("text", x = 57, y = 242, label = "Mean \n 242 (31.5)") +
+  annotate("text", x = 60, y = 242, label = "") +
+  scale_x_continuous(breaks=seq(0,53,5)) + 
+  geom_line() +
+  ylab('Number of accidents \n') + 
+  xlab('Week') +
+  ggtitle('Number of accidents per week') + 
+
+  theme_minimal() + 
+  theme(legend.position="none",
+        axis.text.x = element_text(angle = 25, hjust = .5,size = 12),
+        axis.title =element_text(size = 15),
+        axis.text.y = element_text(size = 12))
+
+```
+
+
+```{r}
+
+df %>%
+  mutate(MES = as.factor(MES)) %>%
+  group_by(DATA,MES) %>%
+  summarise(n_accidents = n()) -> accidents.per.date
+
+summary(aov(n_accidents ~ MES, accidents.per.date))
+
+
+```
+
+The time series seem periodic. I'd like to know how associated are the accident types.
+
+```{r}
+df %>%
+  group_by(TIPO_ACID,DATA) %>%
+  summarise(n_accidents = n()) %>%
+  spread(TIPO_ACID,n_accidents) %>%
+  replace(is.na(.),0) %>%
+  select(-DATA, -EVENTUAL, -INCENDIO, -QUEDA, -TOMBAMENTO) %>%
+  as.matrix() %>%
+  #acf() ##cross correlation plots
+  cor(method='pearson') %>%
+  as.tibble() %>%
+  mutate(id2 = colnames(.)) %>%
+  gather(id,value, 1:5) %>%
+  ggplot(aes(x=id, y=id2, fill=value)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient2(low = "blue", high = "red", mid = "white",
+   midpoint = 0, limit = c(-1,1), space = "Lab",
+    name="Pearson\nCorrelation") +
+  theme_minimal()
+
+```
+
+They are kind of associated. This test did not gave me any insight.
+
+
+```{r}
+df %>%
+  #filter(TIPO_ACID != c('EVENTUAL', 'INCENDIO', 'QUEDA', 'TOMBAMENTO')) %>%
+  group_by(DATA) %>%
+  summarise(n_accidents = n()) -> acc.ts
+
+SMA(acc.ts$n_accidents,14) %>%
+plot(.,type='l')
+```
+
+There's a peak around end of march. Maybe it's the easter's eve. It's not during the summer break and it's a big holyday.  
+
+```{r}
+## Takes a day in portuguese and translates to english
+translate.week.days <- function(weekday){
+  
+  dictionary <- list("SEGUNDA-FEIRA" = 'Monday',
+                     "TERCA-FEIRA" = 'Tuesday',
+                     "QUARTA-FEIRA" = "Wednesday",
+                     "QUINTA-FEIRA"='Thursday',
+                     "SEXTA-FEIRA"='Friday',
+                     "SABADO" = 'Saturday',
+                     "DOMINGO"='Sunday')
+  return(unlist(dictionary[weekday]))
+}
+
+df %>%
+  group_by(DIA_SEM,DATA) %>%
+  summarise(n_accidents = n()) %>%
+  ungroup() %>%
+  mutate(DIA_SEM = translate.week.days(DIA_SEM)) -> accidents.per.week
+
+# accidents.per.week %>%
+#   mutate(DIA_SEMS = str_to_lower(DIA_SEM)) -> accidents.per.week
+
+accidents.per.week$DIA_SEM <- ordered(factor(accidents.per.week$DIA_SEM),
+                                      levels = c("Monday", "Tuesday", "Wednesday","Thursday", "Friday", "Saturday", "Sunday"))
+
+require(RColorBrewer)
+
+accidents.per.week %>%
+  ggplot(aes(x=DIA_SEM, y=n_accidents, fill = DIA_SEM)) +
+  stat_boxplot(geom = "errorbar", width = 0.5,size=0.8) +
+  geom_boxplot(width=0.5) +
+  scale_fill_brewer(palette="Oranges") + 
+  scale_y_continuous(limits = c(0, 70)) +
+  ylab('Number of accidents\n')+
+  theme_minimal() + 
+  theme(legend.position="none",
+        axis.text.x = element_text(angle = 25, hjust = .5,size = 12),
+        axis.title.x=element_blank(),
+        axis.title.y=element_text(size = 15),
+        axis.text.y = element_text(size = 12))
+```
+
+
+```{r}
+
+accidents.per.week$DIA_SEM <- factor(accidents.per.week$DIA_SEM)
+
+accidents.per.week %>%
+group_by(DIA_SEM) %>%
+summarise(sds = sd(n_accidents))
+
+accidents.per.week.anova <- aov(n_accidents ~ DIA_SEM,data=accidents.per.week)
+# summary(accidents.per.week.anova)
+
+TukeyHSD(accidents.per.week.anova)
+```
+
+2016 is a leap year.
+
+
 
 ## How many vehicles are usually involved?
 
@@ -76,6 +278,36 @@ df %>%
             carroca = sum(CARROCA),
             bicicleta = sum(BICICLETA),
             outro = sum(OUTRO))
+```
+
+
+```{r}
+df %>%
+  mutate(tv = AUTO + TAXI + LOTACAO + ONIBUS_URB + ONIBUS_INT + ONIBUS_MET + CAMINHAO + MOTO + CARROCA + BICICLETA + OUTRO)  -> total.vehicles
+
+total.vehicles$tv <- as.factor(total.vehicles$tv)
+
+total.vehicles %>%
+ggplot(aes(tv)) +
+ylab('Number of accidents\n')+
+xlab('\nNumber of vehicles involved')+
+# geom_histogram(stat="count",binwidth=.5, colour="black", fill="gold2") + 
+geom_bar(stat = "count", colour="black", fill="gold2")+
+geom_text(stat='count',aes(label=..count..),vjust=-1)+
+ylim(0, 12000) + 
+theme_minimal() +
+  theme(
+        axis.text.x = element_text(size = 12),
+        axis.title=element_text(size = 15),
+        axis.text.y = element_text(size = 12))
+
+```
+
+```{r}
+
+total.vehicles %>%
+  filter(tv == 0)
+
 ```
 
 
