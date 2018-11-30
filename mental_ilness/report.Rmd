@@ -1,0 +1,332 @@
+---
+title: "Predictors of serious mental illness"
+author: "Felipe Paula"
+date: "11/29/2018"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(fig.width=5, fig.height=2.5, fig.align='center') 
+
+```
+
+# Introduction
+
+Language features can be important to the diagnosis of serious mental illness, as bipolar disease, schizophrenia and depression. Several people with those diseases use social midia to share their problems and to find relief and support. Websites like Youtube can be a great source of data of language production from people with mental illness. To to better understand the relationship between language and mental disorders, we study the speech transcriptions from videos of people reporting having bipolar disease, schizophrenia and depression.
+
+The bipolar disease is a mood disorder that makes an individual go trough major depressive episodes and manic episodes. Here, we are only interested in manic episodes, since the bipolar depression is difficult to differentiate from non-bipolar depression. Maniac episodes are characterized by very fast speech (pressured speech), racing thoughts and difficulty to focus. In the data, we expect increased number of words in a period of time and many word repetitions. People with schizophrenia many times present a very laconic behavior (poverty-of-speech). Some individuals suffer with a "confusion", that decreases their cognitive abilities. So we would expect decreased number of words compared to bipolar.People with depression can be letargic, confused and have a very negative world view. We would expect less confusion than people with schizophrenia and bipolarity. Also, less words spoken in comparison with bipolar.
+
+Schizophrenia and depression are difficult to compare, since we don't have much information about the subjects, so we don't know how depressed are the individuals and if they are in a schizophrenic crysis period. Also, even with highly controled populations, not every person with the same disease present the same symptoms. 
+
+Some speech mistakes can be indication of fewer cognitive resources. For example, when concentraded in some parallel task while speaking, people usually produce longer pauses between words and fillers, like "um", "ah", "so", and others. We assume that serious mental illness (depression, bipolar and schizophrenia), limit the available resources and make people produce more disfluencies. How much the disfluencies 
+
+*Hypothesis*: Disfluencies (pauses and fillers, like "um", "ah", ...), vocabulary diversity and rate of speech can identify speech transcriptions of people that report having depression, manic episodes and schizophrenia.
+
+# Data and methods
+
+The dataset consists of 19 instances (bipolar = 4, depression = 7 and schizophrenia = 8). The smallest video length is 122 seconds and the greatest is 727 seconds. The variables are the individual's ID, group, utterance symbol, the utterance begin time and the utterance end time. There are markings that identify filled pauses, silent pauses, sttutering and sounds.
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE, echo=FALSE}
+require(tidyverse)
+
+## Had to change colnames that conflicted with R functions. (dplyr::id and stats::end)
+df <- read_delim('data.csv',delim = ',')
+colnames(df)[2] <- 'ID'
+colnames(df)[5] <- 'END'
+
+## Add a duration col and replace schizo name
+df %>%
+  mutate(uttlen = END - begin,
+         group=replace(group, group=='schizo', 'schizophrenia')) -> df
+
+########################################################################################
+
+## Helper functions ##
+is.sound <- function(utt){
+  grepl('\\[', utt)
+}
+
+is.filled.pause <- function(utt){
+  (grepl('\\_fp', utt) | grepl('\\_FP', utt) | (utt == 'um'))
+}
+
+is.sil <- function(utt){
+  grepl('SIL', utt)
+}
+
+is.stuttering <- function(utt){
+  grepl('[:alnum:]-', utt)
+}
+
+is.silent.pause <- function(utt){
+  utt == 'sp'
+}
+
+is.um <- function(utt){
+  grepl('\\<um\\>', utt)
+}
+
+is.unk <- function(utt){
+  grepl('<', utt)
+}
+
+## Mega slow
+is.word <- function(utt){
+  ! (is.sound(utt) | is.filled.pause(utt) | is.sil(utt) | is.stuttering(utt) | is.silent.pause(utt) | is.um(utt) | is.unk(utt))
+}
+
+```
+
+Our approach to comprove the hypothesis is the exploration of rate of speech, pause behavior, proportion of filled pauses and lexical diversity. These variables are combined and we apply a dimensionality reduction technique, t-sne, to visualize their separability in a 2d plane. If the variable combination have some information to separate the groups, the t-sne would plot valid cluster like structures.
+
+# Results
+
+In the following sessions we present the result of our analysis.
+
+## Rate of speech
+
+To investigate whether the rate of speech productions is an indicator of which mental illness is present, we sample timesteps each second. We compute how many words were said in that time period. To have a time series for each group, we also average them between the individuals with the same disease. Since the data have a high degree of sparcity, we use a sliding window mean of size 15 to smoothe the series. The confidence intervals were boostrapped with $\alpha=0.05$.
+  \  
+  \  
+```{r message=FALSE, warning=FALSE, paged.print=FALSE, echo=FALSE}
+
+t.sample <- seq(0,500,by=1)
+
+unique(df$ID) %>%
+  ##For each InDividual, create a subtable with a column with the id and a column with timesteps
+  lapply( 
+         function(idd){ 
+           data.frame( 
+             ID = rep(idd, length(t.sample)), times = t.sample, stringsAsFactors = FALSE)
+           }
+         ) %>%
+  ##Concatenate subtables.
+  bind_rows() %>%
+
+  #This join is a little slow if you increase the number of timesteps
+  inner_join(df, by='ID') %>%
+  group_by(ID,times) %>%
+  filter(times >= END, is.word(utt) ) %>% 
+  count() %>%
+  ungroup() -> ids.time.evolution
+
+#Roll mean
+library(RcppRoll)
+
+##Empirical bootstraping of confidence intervals
+bootstrap.ci <- function(emp.data,conf,n.samples){
+  
+  emp.mean <- mean(emp.data)
+  
+  ## Sampling all points togheter without a loop
+  tmp <- sample(emp.data, length(emp.data) * n.samples, replace = TRUE)
+  boot.samples <- matrix(tmp, nrow = length(emp.data), ncol = n.samples )
+  
+  ##Bootstrap means for the n.samples
+  boot.sample.means <- colMeans(boot.samples, na.rm = TRUE)
+  
+  boot.cutoffs <- boot.sample.means - emp.mean
+  
+  it <- quantile(boot.cutoffs, c(conf, 1-conf ))
+  ans <- as.data.frame(list(emp.mean = emp.mean, c1 = emp.mean - it[2], c2= emp.mean - it[1]  ))
+  return( ans )
+}
+
+ids.time.evolution %>%
+  group_by(ID) %>%
+  # filter(times < 120) %>%
+  mutate(word.inc = n - lag(n)) %>% ## Interval
+  mutate(wmean = roll_mean(word.inc,n=15,fill = NA) ) %>% ## Rolling window mean
+  left_join(df %>% group_by(group,ID) %>% summarise(k = 0), by='ID') %>% ##Retrieving group names
+  select(group,ID,times,wmean,word.inc) -> evolution.wmean
+
+evolution.wmean %>%
+  filter(!is.na(wmean)) %>%
+  group_by(group,times) %>%
+  # do(ci.student(.$wmean,0.05)) %>%  ##UNCOMMENT FOR NEAT T STUDENT - mean CIs!
+  do(bootstrap.ci(.$wmean,0.1,1000)) %>% ##UNCOMMENT FOR NEAT BOOTSTRAP CIs!
+  select(times,emp.mean,group,c1,c2) -> ans
+
+ans %>%
+    ggplot(aes(x=times,y=emp.mean,group=group)) +
+    ylim(c(0,4)) +
+    xlim(c(0,150)) +
+    ylab('Words per sec\n') +
+    xlab('Time') +
+    geom_line(aes(color=group)) +
+    ggtitle('Speech rate per second') +
+    geom_ribbon(aes(ymin=c1,ymax=c2,fill=group),alpha=0.3) +
+    theme_minimal() +
+    theme(
+          plot.title = element_text(size = 16, hjust = 0.5),
+          axis.text.x = element_text(size = 12),
+          axis.title=element_text(size = 15),
+          axis.text.y = element_text(size = 12),
+          legend.title=element_text(size=15), 
+    legend.text=element_text(size=12))
+```
+    \     
+    \  
+The picture indicates that in terms of grater speech rate, we have bipolar $>$ schizophrenia $>$ depression. However, more data is needed to support stronger conclusions.
+
+## Silent pauses
+
+To characterize the overall pause behavior of the groups, we investigate the distribution of pause lengths for all individuals in each group.
+    \    
+    \    
+```{r message=FALSE, warning=FALSE, paged.print=FALSE, echo=FALSE}
+df %>%
+  filter(utt == 'sp') %>%
+  ggplot(aes(y=uttlen,x=group,fill=group)) + 
+  scale_y_continuous(trans = 'log10') + ##Without log the plot is very uninformative
+  xlab('Group') +
+  ylab('Log pause length') +
+  ggtitle('Pause length distribution') +
+  geom_boxplot() +
+  theme_minimal() +
+    theme(
+          plot.title = element_text(size = 16, hjust = 0.5),
+          axis.text.x = element_text(size = 12),
+          axis.title=element_text(size = 15),
+          axis.text.y = element_text(size = 12),
+          legend.title= element_text(size=15), 
+          legend.position = 'none')
+```
+  \  
+  \  
+After we take the logarithm of the pauses lengths, the data present a normal behavior. Through Shapiro-Wilk test of normality, the schizophrenia ($p<.001$) and the depression ($p<.05$) groups were significantly normal, however the bipolar group ($p=0.31$) did not achieve significance. We also noted that the tail pause lengths are too big. A pause of 5 seconds is already too big and may be related to other linguistic process than the retrieval of words, for example, answering a sms texts while the video is recording. To minimize the data loss and still capture the phenomena we are interested, we removed all pauses with length bigger than 8 seconds.
+
+To investigate if the mean pause length of an individual helps to indentify the diseases, we also plot their distribution.
+  \  
+  \  
+```{r message=FALSE, warning=FALSE, paged.print=FALSE, echo=FALSE}
+lnorm.fit <- function(obs){
+  ans <- log(obs)
+  mlog <- mean(ans)
+  sdlog <- sd(ans)
+  return(
+    as.data.frame(
+      list(mlog = mlog, sdlog = sdlog)
+      )
+  )
+}
+
+df %>%
+  filter(utt == 'sp', uttlen < 8) %>%
+  group_by(group,ID) %>%
+  do(lnorm.fit(.$uttlen)) -> lognorm.fit
+
+lognorm.fit %>%
+  ggplot(aes(x=group,y=mlog,fill=group)) +
+  ylab('Log mean pause length') +
+  xlab('Group') +
+  ggtitle("Individual's mean log pause length") +
+  geom_boxplot() +
+  geom_point() +
+  theme_minimal() +
+    theme(
+          plot.title = element_text(size = 16, hjust = 0.5),
+          axis.text.x = element_text(size = 12),
+          axis.title=element_text(size = 15),
+          axis.text.y = element_text(size = 12),
+          legend.title= element_text(size=15), 
+          legend.position = 'none')
+
+```
+  \  
+  \  
+The above plot displays the mean log pause length for each individual of each group. Only the  comparison between bipolar and depressions achieves significancy (student t-test, $t=-3.16$, $p <0.01$).
+
+## Time spent on filled pauses and silent pauses
+
+Since people with difficulty of concentration can produced more filled pauses ("umm", "uh", "soo", etc) and silent pauses, we investigate if this feature is indicator of illnesses. The degree of how disfluent is the speech is modeled by computing the proportion of time spent in pauses (filled and silent) over the overall time.
+  \  
+  \  
+```{r message=FALSE, warning=FALSE, paged.print=FALSE, echo=FALSE}
+df %>%
+  filter(!is.na(utt)) %>%
+  group_by(group, ID) %>%
+  
+  mutate(ssp = if_else(utt == 'sp' & uttlen < 8, uttlen, 0),
+         sword = if_else(is.word(utt), uttlen, 0),
+         sfp = if_else(is.filled.pause(utt), uttlen, 0)) %>%
+  
+  summarise(t.pause = sum(ssp),
+            t.word = sum(sword),
+            t.fp = sum(sfp)) %>%
+  mutate(prop.disf = (t.pause + t.fp)/(t.word + t.pause + t.fp) ) -> times.disfluencies
+
+
+times.disfluencies %>%
+  ggplot(aes(y=prop.disf,x=group, fill=group)) +
+  geom_boxplot() +
+  xlab('Group') + 
+  ylab('Prop. of disfluencies \n') + 
+  ggtitle('Time spent on filled and silent pauses') + 
+  ylim(0,0.55) +
+  #geom_abline(slope=0, intercept=0.35, linetype = 'dashed', alpha=0.5) +
+  geom_point() +
+  theme_minimal() +
+    theme(
+          plot.title = element_text(size = 16, hjust = 0.5),
+          axis.text.x = element_text(size = 12),
+          axis.title=element_text(size = 15),
+          axis.text.y = element_text(size = 12),
+          legend.title= element_text(size=15), 
+          legend.position = 'none')  
+```
+  \  
+  \  
+The bipolar group produces less disfluencies than the depression ($t=-2.57$, $p<0.05$) and schizophrenia groups ($t=-2.25$, $p<0.05$). However, the difference between schizophrenia and depression it's not significative.
+
+## Vocabulary diversity
+
+To model how many different words were produced, we calcutaled the ratio between the unique words (types) and all said words (tokens), for each individual in their group.
+  \  
+  \  
+```{r message=FALSE, warning=FALSE, paged.print=FALSE, echo=FALSE}
+df %>%
+  group_by(ID,group) %>%
+  filter( is.word(utt) )  %>%  
+  summarise(tokens = length(utt),
+            types = length( unique(utt))) %>%
+  mutate(type.token = types/tokens) -> type.token.ids
+
+type.token.ids %>%
+  ggplot(aes(x=group,y=type.token, fill=group)) +
+  geom_boxplot() +
+  geom_point() +
+  xlab('Group') + 
+  ylab('Type \\ token \n') + 
+  ggtitle('Lexical diversity') + 
+#  geom_abline(slope=0, intercept=0.37, linetype = 'dashed', alpha=0.5) +
+  theme_minimal() +
+    theme(
+          plot.title = element_text(size = 16, hjust = 0.5),
+          axis.text.x = element_text(size = 12),
+          axis.title=element_text(size = 15),
+          axis.text.y = element_text(size = 12),
+          legend.title= element_text(size=15), 
+          legend.position = 'none')   
+```
+  \  
+  \  
+Bipolar shows less diversity in vocabulary than depression ($t=-2.57$, $p<0.05$) but the difference to schizophrenia was not significative ($t=-1.2$, $p=0.14$). The schizophrenia also show less vocabulary diversity than depression ($t=-1.6$, $p<0.1$).
+
+# Discussion and conclusion
+
+The overall significative diferences were: 
+
+* Pause length  
+    + bipolar $<$ depression  
+* Disfluencies  
+    + bipolar $<$ depression and bipolar $<$ schizophrenia  
+* Vocabulary diversity  
+    + bipolar $<$ depression and schizophrenia $<$ depression  
+    
+  \  
+Also the rate of speech shows an indication that bipolars speak more faster than depressives and schizophrenics. However, we can't reach strong conclusions. The main reason for that is the little volume of data. Speech phenomena present a natural noise, since speech patterns strongly varies from person to person. Additionally, the illnesses can happen in various degrees of severity and combinations of symptoms. Although the hypothesis can't be proven by the presented results, it can still hold some truth. Future investigation should replicate this results with a bigger data volume.
+
