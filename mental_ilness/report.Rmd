@@ -3,8 +3,8 @@ title: "Predictors of serious mental illness"
 author: "Felipe Paula"
 date: "11/29/2018"
 output:
-  html_document: default
   pdf_document: default
+  html_document: default
 ---
 
 ```{r setup, include=FALSE}
@@ -25,7 +25,7 @@ Some speech mistakes can be indication of fewer cognitive resources. For example
 
 *Hypothesis*: Disfluencies (pauses and fillers, like "um", "ah", ...), vocabulary diversity and rate of speech can identify speech transcriptions of people that report having depression, manic episodes and schizophrenia.
 
-# Data and methods
+# Data
 
 The dataset consists of 19 instances (bipolar = 4, depression = 7 and schizophrenia = 8). The smallest video length is 122 seconds and the greatest is 727 seconds. The variables are the individual's ID, group, utterance symbol, the utterance begin time and the utterance end time. There are markings that identify filled pauses, silent pauses, sttutering and sounds.
 
@@ -80,7 +80,7 @@ is.word <- function(utt){
 
 ```
 
-Our approach to comprove the hypothesis is the exploration of rate of speech, pause behavior, proportion of filled pauses and lexical diversity. These variables are combined and we apply a dimensionality reduction technique, t-sne, to visualize their separability in a 2d plane. If the variable combination have some information to separate the groups, the t-sne would plot valid cluster like structures.
+Our approach to comprove the hypothesis is the exploration of rate of speech, pause behavior, proportion of filled pauses and lexical diversity.
 
 # Results
 
